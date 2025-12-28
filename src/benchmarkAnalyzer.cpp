@@ -4,7 +4,7 @@
 
 #include <filesystem>
 #include <functional>
-#include <iomanip> 
+#include <iomanip> // Include for std::setw and std::left/right
 #include <strings.h>
 
 namespace BenchmarkAnalyzer {
@@ -181,8 +181,8 @@ namespace BenchmarkAnalyzer {
 
         // g++ -0[X] sex.cpp -o sex 2>&1
         // ./sex
-        std::string compileCommand{"g++ " + compilerFlags + " " + sourceFile + " -o " + binaryOutput + " 2>&1"};
-        std::string output{executeCommand(compileCommand)};
+        std::string compileCommand {"g++ " + compilerFlags + " " + sourceFile + " -o " + binaryOutput + " 2>&1"};
+        std::string output {executeCommand(compileCommand)};
 
         auto timeSavePoint_END {std::chrono::high_resolution_clock::now()};
         // TSP1 - TSP0 = CT
@@ -205,7 +205,7 @@ namespace BenchmarkAnalyzer {
         // if (!theCommandExecutingCode.empty() && theCommandExecutingCode.find("error") != std::string::npos) {
         //     std::cerr << "Assembly generation errors found:\n" << theCommandExecutingCode << std::endl;
         //     return false;
-        // }
+        // }4
 
         int exitCode {system(asmCommand.c_str())};
         if (exitCode != 0) {
@@ -272,11 +272,13 @@ namespace BenchmarkAnalyzer {
             // a page fault happens when a process tries to access a virtual memory page
             // that is not currently mapped in its page table
             // handled by the OS, NOT an error
-            statisticStruct.minorPageFaults               = usage.ru_minflt;
-            statisticStruct.majorPageFaults               = usage.ru_majflt;
+
             // long int / int
             // i64_TESTED_LINUX_DT minorPageFaults;
             // i64_TESTED_LINUX_DT majorPageFaults;
+            statisticStruct.minorPageFaults               = usage.ru_minflt; // the page is already in RAM but is not mapped into the process’s address space yet,
+                                                                             // avoids disk I/O overhead
+            statisticStruct.majorPageFaults               = usage.ru_majflt; // page is not in RAM and needs disk I/O overhead
         } else {
             std::cerr << colors::BRIGHT_RED << "Fork failure due to unknown inference." << colors::RESET << std::endl;
         } return statisticStruct;
@@ -365,9 +367,9 @@ namespace BenchmarkAnalyzer {
 
         std::sort(numOfExecutionTimes.begin(), numOfExecutionTimes.end()); // introsort O(log N)
 
-        double medianTime{numOfExecutionTimes[numberOfExecRuns / 2]}; // middle value 
-        double minimumExecutionTime{numOfExecutionTimes.front()}; // minimum value at front
-        double maximumExecutionTime{numOfExecutionTimes.back()}; // maximum value at last
+        double medianTime {numOfExecutionTimes[numberOfExecRuns / 2]}; // middle value 
+        double minimumExecutionTime {numOfExecutionTimes.front()};     // minimum value at front
+        double maximumExecutionTime {numOfExecutionTimes.back()};      // maximum value at last
 
         int p25Index {static_cast<int>(numberOfExecRuns * 0.25)};
         int p75Index {static_cast<int>(numberOfExecRuns * 0.75)};
@@ -380,7 +382,7 @@ namespace BenchmarkAnalyzer {
         double p99Time {(p99Index < numberOfExecRuns) ? numOfExecutionTimes[p99Index] : maximumExecutionTime};
 
         // double coefficientOfVariation {(double)(standardDeviation / averageExecutionTime) * 100};
-        double coefficientOfVariation {((standardDeviation / averageExecutionTime) * 100)}; // im the backet god
+        double coefficientOfVariation {((standardDeviation / averageExecutionTime) * 100)}; // im the bracket god
         
         printHeader("TIMING METRICS");
         printMetric("Average execution time", std::to_string(averageExecutionTime * 1000), "ms");
@@ -418,6 +420,26 @@ namespace BenchmarkAnalyzer {
         printMetric("Average Memory Usage", formatBytes(static_cast<long>(averageMemoryUsage * 1024)));
         printMetric("Minimum Memory Usage", formatBytes(minimumMemory * 1024));
         printMetric("Maximum Memory Usage", formatBytes(maximumMemory * 1024));
+        // // printMetric("Minor Page Faults", )
+        // const auto &lastExecRun {allStatisticStructVector.back()};
+        // printMetric("Minor Page Faults", std::to_string(lastExecRun.minorPageFaults));
+        // printMetric("Major Page Faults", std::to_string(lastExecRun.majorPageFaults));
+
+        long totalMinorFaults = 0;
+        long totalMajorFaults = 0;
+
+        for (const auto &statisticStruct : allStatisticStructVector) {
+            totalMinorFaults += statisticStruct.minorPageFaults;
+            totalMajorFaults += statisticStruct.majorPageFaults;
+        }
+
+        // double avgMinorFaults {static_cast<double>(totalMinorFaults) / numberOfExecRuns};
+        // double avgMajorFaults {static_cast<double>(totalMajorFaults) / numberOfExecRuns};
+        
+        printHeader("PAGE FAULT METRICS");
+        printMetric("Avg Minor Page Faults", std::to_string(totalMinorFaults));
+        printMetric("Avg Major Page Faults", std::to_string(totalMajorFaults));
+
 
         printHeader("PROCESSOR METRICS (latest run)");
         const auto &lastRun{allStatisticStructVector.back()};
