@@ -4,7 +4,7 @@
 
 #include <filesystem>
 #include <functional>
-#include <iomanip> // Include for std::setw and std::left/right
+#include <iomanip> 
 #include <strings.h>
 
 namespace BenchmarkAnalyzer {
@@ -181,8 +181,8 @@ namespace BenchmarkAnalyzer {
 
         // g++ -0[X] sex.cpp -o sex 2>&1
         // ./sex
-        std::string compileCommand {"g++ " + compilerFlags + " " + sourceFile + " -o " + binaryOutput + " 2>&1"};
-        std::string output {executeCommand(compileCommand)};
+        std::string compileCommand{"g++ " + compilerFlags + " " + sourceFile + " -o " + binaryOutput + " 2>&1"};
+        std::string output{executeCommand(compileCommand)};
 
         auto timeSavePoint_END {std::chrono::high_resolution_clock::now()};
         // TSP1 - TSP0 = CT
@@ -205,7 +205,7 @@ namespace BenchmarkAnalyzer {
         // if (!theCommandExecutingCode.empty() && theCommandExecutingCode.find("error") != std::string::npos) {
         //     std::cerr << "Assembly generation errors found:\n" << theCommandExecutingCode << std::endl;
         //     return false;
-        // }4
+        // }
 
         int exitCode {system(asmCommand.c_str())};
         if (exitCode != 0) {
@@ -816,7 +816,7 @@ namespace BenchmarkAnalyzer {
                     config.enableCoreIsolation = true;
                     config.targetCoreId = coreId;
 
-                    std::cout << colors::BRIGHT_YELLOW << "  Enable thread isolation? (y/n): " << colors::RESET;
+                    std::cout << colors::BRIGHT_YELLOW << "  Enable thread isolation? [[yY/nN]]: " << colors::RESET;
                     std::cin >> shouldEnableThreadIso;
 
                     if (shouldEnableThreadIso == 'y' || shouldEnableThreadIso == 'Y') {
