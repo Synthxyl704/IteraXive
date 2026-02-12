@@ -2,44 +2,45 @@
 
 // i hate preprocessors
 
+#include <array>
 #include <filesystem>
 #include <functional>
-#include <iomanip> 
+#include <iomanip>
 #include <strings.h>
 
 namespace BenchmarkAnalyzer {
     namespace colors {
-        const std::string RESET{"\033[0m"};
-        const std::string BOLD{"\033[1m"};
-        const std::string DIM{"\033[2m"};
-        const std::string UNDERLINE{"\033[4m"};
+        const std::string RESET = "\033[0m";
+        const std::string BOLD = "\033[1m";
+        const std::string DIM = "\033[2m";
+        const std::string UNDERLINE = "\033[4m";
 
-        const std::string BLACK{"\033[30m"};
-        const std::string RED{"\033[31m"};
-        const std::string GREEN{"\033[32m"};
-        const std::string YELLOW{"\033[33m"};
-        const std::string BLUE{"\033[34m"};
-        const std::string MAGENTA{"\033[35m"};
-        const std::string CYAN{"\033[36m"};
-        const std::string WHITE{"\033[37m"};
+        const std::string BLACK = "\033[30m";
+        const std::string RED = "\033[31m";
+        const std::string GREEN = "\033[32m";
+        const std::string YELLOW = "\033[33m";
+        const std::string BLUE = "\033[34m";
+        const std::string MAGENTA = "\033[35m";
+        const std::string CYAN = "\033[36m";
+        const std::string WHITE = "\033[37m";
 
-        const std::string BRIGHT_BLACK{"\033[90m"};
-        const std::string BRIGHT_RED{"\033[91m"};
-        const std::string BRIGHT_GREEN{"\033[92m"};
-        const std::string BRIGHT_YELLOW{"\033[93m"};
-        const std::string BRIGHT_BLUE{"\033[94m"};
-        const std::string BRIGHT_MAGENTA{"\033[95m"};
-        const std::string BRIGHT_CYAN{"\033[96m"};
-        const std::string BRIGHT_WHITE{"\033[97m"};
+        const std::string BRIGHT_BLACK = "\033[90m";
+        const std::string BRIGHT_RED = "\033[91m";
+        const std::string BRIGHT_GREEN = "\033[92m";
+        const std::string BRIGHT_YELLOW = "\033[93m";
+        const std::string BRIGHT_BLUE = "\033[94m";
+        const std::string BRIGHT_MAGENTA = "\033[95m";
+        const std::string BRIGHT_CYAN = "\033[96m";
+        const std::string BRIGHT_WHITE = "\033[97m";
 
-        const std::string BG_BLACK{"\033[40m"};
-        const std::string BG_RED{"\033[41m"};
-        const std::string BG_GREEN{"\033[42m"};
-        const std::string BG_YELLOW{"\033[43m"};
-        const std::string BG_BLUE{"\033[44m"};
-        const std::string BG_MAGENTA{"\033[45m"};
-        const std::string BG_CYAN{"\033[46m"};
-        const std::string BG_WHITE{"\033[47m"};
+        const std::string BG_BLACK = "\033[40m";
+        const std::string BG_RED = "\033[41m";
+        const std::string BG_GREEN = "\033[42m";
+        const std::string BG_YELLOW = "\033[43m";
+        const std::string BG_BLUE = "\033[44m";
+        const std::string BG_MAGENTA = "\033[45m";
+        const std::string BG_CYAN = "\033[46m";
+        const std::string BG_WHITE = "\033[47m";
     }
 
     /*
@@ -137,16 +138,16 @@ namespace BenchmarkAnalyzer {
     // }
 
     std::string executeCommand(const std::string &command) {
-        FILE *pipe{popen(command.c_str(), "r")};
+        FILE *pipe {popen(command.c_str(), "r")};
         if (pipe == NULL || !(pipe)) {
             return "";
         }
 
-        char buffer[128];
-        std::string result {""};
+        std::array<char, 128> buffer{};
+        std::string result;
 
-        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-            result += buffer;
+        while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+            result += buffer.data();
         }
 
         pclose(pipe);
@@ -174,15 +175,14 @@ namespace BenchmarkAnalyzer {
         return static_cast<std::int64_t>(file.tellg());
     }
 
-    auto compileProgram( // not risking PxV because updating errors due to local copying, stick to [&]PxR
+    auto compileProgram(
         const std::string &sourceFile, const std::string &binaryOutput,
-        const std::string &compilerFlags, double &compileTime) -> bool {
+        const std::string &compilerFlags, double &compileTime,
+        const std::string &compiler) -> bool {
         auto timeSavePoint_START {std::chrono::high_resolution_clock::now()};
 
-        // g++ -0[X] sex.cpp -o sex 2>&1
-        // ./sex
-        std::string compileCommand{"g++ " + compilerFlags + " " + sourceFile + " -o " + binaryOutput + " 2>&1"};
-        std::string output{executeCommand(compileCommand)};
+        std::string compileCommand{compiler + " " + compilerFlags + " " + sourceFile + " -o " + binaryOutput + " 2>&1"};
+        std::string output {executeCommand(compileCommand)};
 
         auto timeSavePoint_END {std::chrono::high_resolution_clock::now()};
         // TSP1 - TSP0 = CT
@@ -234,7 +234,10 @@ namespace BenchmarkAnalyzer {
                 cpu_set_t totalProcessorSet;
                 CPU_ZERO(&totalProcessorSet);
                 CPU_SET(config.targetCoreId, &totalProcessorSet);
-                sched_setaffinity(0, sizeof(cpu_set_t), &totalProcessorSet);
+                if (sched_setaffinity(0, sizeof(cpu_set_t), &totalProcessorSet) != 0) {
+                    perror("sched_setaffinity");
+                    _exit(1);
+                }
             }
 
             // apply thread isolation (same as core for single-threaded child)
@@ -242,11 +245,13 @@ namespace BenchmarkAnalyzer {
                 cpu_set_t totalProcessorSet;
                 CPU_ZERO(&totalProcessorSet);
                 CPU_SET(config.targetCoreId, &totalProcessorSet);
-                pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &totalProcessorSet);
+                if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &totalProcessorSet) != 0) {
+                    _exit(1);
+                }
             }
 
             execl(binaryPath.c_str(), binaryPath.c_str(), nullptr);
-            exit(1);
+            _exit(1);
         } else if (pid > 0) {
             auto startProgramExecution {std::chrono::high_resolution_clock::now()};
 
@@ -276,7 +281,7 @@ namespace BenchmarkAnalyzer {
             // long int / int
             // i64_TESTED_LINUX_DT minorPageFaults;
             // i64_TESTED_LINUX_DT majorPageFaults;
-            statisticStruct.minorPageFaults               = usage.ru_minflt; // the page is already in RAM but is not mapped into the process’s address space yet,
+            statisticStruct.minorPageFaults               = usage.ru_minflt; // the page is already in RAM but is not mapped into the process's address space yet,
                                                                              // avoids disk I/O overhead
             statisticStruct.majorPageFaults               = usage.ru_majflt; // page is not in RAM and needs disk I/O overhead
         } else {
@@ -307,7 +312,7 @@ namespace BenchmarkAnalyzer {
 
     // ---
 
-    std::string formatBytes(long bytes) {
+    auto formatBytes(i64_TESTED_LINUX_DT bytes) -> std::string {
         // const char *units[] = {"B", "KB", "MB", "GB"};
         std::vector<std::string> units = {"B", "KB", "MB", "GB"};
         int unitIndex {0};
@@ -367,7 +372,9 @@ namespace BenchmarkAnalyzer {
 
         std::sort(numOfExecutionTimes.begin(), numOfExecutionTimes.end()); // introsort O(log N)
 
-        double medianTime {numOfExecutionTimes[numberOfExecRuns / 2]}; // middle value 
+        double medianTime = (numberOfExecRuns % 2 == 0)
+            ? (numOfExecutionTimes[numberOfExecRuns / 2 - 1] + numOfExecutionTimes[numberOfExecRuns / 2]) / 2.0
+            : numOfExecutionTimes[numberOfExecRuns / 2]; 
         double minimumExecutionTime {numOfExecutionTimes.front()};     // minimum value at front
         double maximumExecutionTime {numOfExecutionTimes.back()};      // maximum value at last
 
@@ -433,12 +440,14 @@ namespace BenchmarkAnalyzer {
             totalMajorFaults += statisticStruct.majorPageFaults;
         }
 
-        // double avgMinorFaults {static_cast<double>(totalMinorFaults) / numberOfExecRuns};
-        // double avgMajorFaults {static_cast<double>(totalMajorFaults) / numberOfExecRuns};
+        double avgMinorFaults {static_cast<double>(totalMinorFaults) / numberOfExecRuns};
+        double avgMajorFaults {static_cast<double>(totalMajorFaults) / numberOfExecRuns};
         
         printHeader("PAGE FAULT METRICS");
-        printMetric("Avg Minor Page Faults", std::to_string(totalMinorFaults));
-        printMetric("Avg Major Page Faults", std::to_string(totalMajorFaults));
+        printMetric("Total Minor Page Faults", std::to_string(totalMinorFaults));
+        printMetric("Total Major Page Faults", std::to_string(totalMajorFaults));
+        printMetric("Avg Minor Page Faults", std::to_string(avgMinorFaults));
+        printMetric("Avg Major Page Faults", std::to_string(avgMajorFaults));
 
 
         printHeader("PROCESSOR METRICS (latest run)");
@@ -524,17 +533,17 @@ namespace BenchmarkAnalyzer {
             }
         };
 
-        struct cleanupGuard {
-            std::function<void()> fx_CC_callDuringScopeExit;
-            ~cleanupGuard() { fx_CC_callDuringScopeExit(); }
-            // i didnt know structs could have destrutors
-        } guard{[&]() { cleanup(); }};
-
         printHeader("COMPILATION PHASE");
 
         double compileTime {0.0};
-        if (!compileProgram(benchMarkConfigStruct.sourceFile, binaryPath.string(), benchMarkConfigStruct.compilerFlags, compileTime)) {
-            std::cerr << colors::BRIGHT_RED << "Compilation failure due to variant inference." << colors::RESET << "\n";
+        if (!compileProgram(benchMarkConfigStruct.sourceFile,
+                    binaryPath.string(),
+                    benchMarkConfigStruct.compilerFlags,
+                    compileTime,
+                    benchMarkConfigStruct.compiler)) {
+                        std::cerr << colors::BRIGHT_RED
+                                  << "Compilation failure due to variant inference."
+                                  << colors::RESET << "\n";
             return;
         }
 
@@ -588,7 +597,8 @@ namespace BenchmarkAnalyzer {
         std::cout << "\n";
         printHeader("DETAILED STATISTICS");
         printDetailedStatistics(allStatistics, benchMarkConfigStruct.totalExecutionRuns);
-        // cleanup is performed automatically by the guard
+        // cleanup
+        cleanup();
     }
 
     // --- PROCESSOR AFFINITY CUSTOM THING HERE ---
@@ -706,12 +716,20 @@ namespace BenchmarkAnalyzer {
         std::cout << colors::BRIGHT_YELLOW << "  Number of runs (default: 5): " << colors::RESET;
         std::string runsInput;
         std::getline(std::cin, runsInput);
-        totalReiterativeExecutionRuns = (runsInput.empty()) ? 5 : std::stoi(runsInput);
+        try {
+            totalReiterativeExecutionRuns = (runsInput.empty()) ? 5 : std::stoi(runsInput);
+        } catch (const std::exception&) {
+            totalReiterativeExecutionRuns = 5;
+        }
 
         std::cout << colors::BRIGHT_YELLOW << "  Warmup iterations (default: 2): " << colors::RESET;
         std::string warmupInput;
         std::getline(std::cin, warmupInput);
-        warmupIterations = (warmupInput.empty()) ? 2 : std::stoi(warmupInput); // toe
+        try {
+            warmupIterations = (warmupInput.empty()) ? 2 : std::stoi(warmupInput);
+        } catch (const std::exception&) {
+            warmupIterations = 2;
+        }
 
         std::cout << colors::BRIGHT_YELLOW << "  Generate assembly output? [yY/nN]: " << colors::RESET;
         std::cin >> assemblyFileGenerationFlag;

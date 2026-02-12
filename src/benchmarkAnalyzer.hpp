@@ -22,7 +22,13 @@
 
 using i64_TESTED_LINUX_DT = long; // forgive me
 
+
+
 namespace BenchmarkAnalyzer {
+    auto isCompilerAvailable(const std::string &compiler) -> bool;
+    std::string getCompilerVersion(const std::string &compiler);
+    std::string getCompilerType(const std::string &compiler);
+
     struct analyzerStatisticParameters {
 
         // compile time
@@ -57,7 +63,15 @@ namespace BenchmarkAnalyzer {
 
     //     double confidenceScore;        // how confident are we? (0 <--> 1)
     //     std::vector<std::pair<int, double>> dataPoints; // (input_size, time)
-    // };
+    // };\
+
+    // auto compileProgram(
+    //     const std::string &sourceFile, 
+    //     const std::string &binaryOutput,
+    //     const std::string &compilerFlags, 
+    //     double &compileTime,
+    //     const std::string &compiler = "g++"
+    // ) -> bool;
 
     struct benchmarkConfig {
         bool generateAssembly;
@@ -72,6 +86,7 @@ namespace BenchmarkAnalyzer {
         std::string sourceFile;
         std::string assemblyOutputFile;
         std::string compilerFlags;
+        std::string compiler;
 
         // std::vector<int> inputSizes;
 
@@ -86,7 +101,7 @@ namespace BenchmarkAnalyzer {
             , generateAssembly(!asmOut.empty())
             , enableCoreIsolation(false), targetCoreId(-1)
             , enableThreadIsolation(false)
-            , analyzeComplexity(false) {}
+            , analyzeComplexity(false), compiler("g++") {}
     };
 
     auto getTimeInSeconds(struct timeval tv) -> double;
@@ -101,11 +116,12 @@ namespace BenchmarkAnalyzer {
     void printHeader(const std::string &title);
     void printMetric(const std::string &name, const std::string &value, const std::string &unit = "");
 
-    auto compileProgram (
-        const std::string &sourceFile,
+    auto compileProgram(
+        const std::string &sourceFile, 
         const std::string &binaryOutput,
-        const std::string &compilerFlags,
-        double& compileTime
+        const std::string &compilerFlags, 
+        double &compileTime,
+        const std::string &compiler = "g++"
     ) -> bool;
 
     bool generateAssembly (
