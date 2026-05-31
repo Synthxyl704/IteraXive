@@ -19,8 +19,7 @@
 #include <cmath>
 #include <sched.h>
 #include <pthread.h>
-
-using i64_TESTED_LINUX_DT = long; // forgive me
+#include <cstdint>
 
 
 
@@ -28,6 +27,7 @@ namespace BenchmarkAnalyzer {
     auto isCompilerAvailable(const std::string &compiler) -> bool;
     std::string getCompilerVersion(const std::string &compiler);
     std::string getCompilerType(const std::string &compiler);
+    std::string detectBestCompiler();
 
     struct analyzerStatisticParameters {
 
@@ -42,12 +42,12 @@ namespace BenchmarkAnalyzer {
         double userModeProcessorTime;
         double systemKernelModeProcessorTime;
 
-        i64_TESTED_LINUX_DT binarySize;
-        i64_TESTED_LINUX_DT maximumMemoryUsageInKB;
-        i64_TESTED_LINUX_DT voluntaryContextSwitches;
-        i64_TESTED_LINUX_DT involuntaryContextSwitches;
-        i64_TESTED_LINUX_DT minorPageFaults;
-        i64_TESTED_LINUX_DT majorPageFaults;
+        std::int64_t binarySize;
+        std::int64_t maximumMemoryUsageInKB;
+        std::int64_t voluntaryContextSwitches;
+        std::int64_t involuntaryContextSwitches;
+        std::int64_t minorPageFaults;
+        std::int64_t majorPageFaults;
         // suck that long d*Ck
 
         int programExitCode;
@@ -92,25 +92,29 @@ namespace BenchmarkAnalyzer {
 
         benchmarkConfig(const std::string &src,
                         const std::string &asmOut = "",
-                        const std::string &flags = "-O2 -std=c++17",
+                        const std::string &flags = "-O2 -std=c++17 -static",
                         int runs = 5,
-                        int warmup = 2)
-            : sourceFile(src), assemblyOutputFile(asmOut) // this looks like good cancer
+                        int warmup = 2,
+                        const std::string &comp = "")
+            : sourceFile(src), assemblyOutputFile(asmOut)
             , compilerFlags(flags), totalExecutionRuns(runs)
             , warmupIterations(warmup)
             , generateAssembly(!asmOut.empty())
             , enableCoreIsolation(false), targetCoreId(-1)
             , enableThreadIsolation(false)
-            , analyzeComplexity(false), compiler("g++") {}
+            , analyzeComplexity(false)
+        {
+            compiler = comp.empty() ? detectBestCompiler() : comp;
+        }
     };
 
     auto getTimeInSeconds(struct timeval tv) -> double;
 
     auto executeCommand(const std::string &command) -> std::string;
     // std::string executeCommand(const std::string &program, const std::vector<std::string> &argumentList);
-    auto formatBytes(i64_TESTED_LINUX_DT bytes) -> std::string;
+    auto formatBytes(std::int64_t bytes) -> std::string;
 
-    i64_TESTED_LINUX_DT getFileSize(const std::string &filename);
+    std::int64_t getFileSize(const std::string &filename);
 
     void printSeparator(int width = 70);
     void printHeader(const std::string &title);
@@ -124,11 +128,12 @@ namespace BenchmarkAnalyzer {
         const std::string &compiler = "g++"
     ) -> bool;
 
-    bool generateAssembly (
+    bool generateAssembly(
         const std::string &sourceFile,
         const std::string &assemblyOutput,
-        const std::string &compilerFlags
-    ); // ass
+        const std::string &compilerFlags,
+        const std::string &compiler = "g++"
+    );
 
     analyzerStatisticParameters runSingularTimeSlice(const std::string &binaryPath, const benchmarkConfig &config);
 

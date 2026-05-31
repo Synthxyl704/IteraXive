@@ -137,21 +137,86 @@ namespace BenchmarkAnalyzer {
     //     return (result);
     // }
 
+    static std::vector<std::string> splitArgs(const std::string &cmd) {
+        std::vector<std::string> args;
+        std::istringstream iss(cmd);
+        std::string token;
+        while (iss >> token) {
+            args.push_back(token);
+        }
+        return args;
+    }
+
     std::string executeCommand(const std::string &command) {
-        FILE *pipe {popen(command.c_str(), "r")};
-        if (pipe == NULL || !(pipe)) {
+        auto args = splitArgs(command);
+        if (args.empty()) return "";
+
+        std::vector<char*> argv;
+        for (auto &a : args) argv.push_back(a.data());
+        argv.push_back(nullptr);
+
+        int pipefd[2];
+        if (pipe(pipefd) == -1) return "";
+
+        pid_t pid = fork();
+        if (pid == -1) {
+            close(pipefd[0]);
+            close(pipefd[1]);
             return "";
         }
 
-        std::array<char, 128> buffer{};
-        std::string result;
-
-        while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-            result += buffer.data();
+        if (pid == 0) {
+            close(pipefd[0]);
+            dup2(pipefd[1], STDOUT_FILENO);
+            dup2(pipefd[1], STDERR_FILENO);
+            close(pipefd[1]);
+            execvp(argv[0], argv.data());
+            _exit(127);
         }
 
-        pclose(pipe);
+        close(pipefd[1]);
+
+        std::string result;
+        char buffer[4096];
+        ssize_t count;
+        while ((count = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
+            result.append(buffer, count);
+        }
+        close(pipefd[0]);
+
+        int status;
+        waitpid(pid, &status, 0);
         return result;
+    }
+
+    auto isCompilerAvailable(const std::string &compiler) -> bool {
+        std::string testCommand = compiler + " --version";
+        std::string output = executeCommand(testCommand);
+        return !output.empty();
+    }
+
+    std::string getCompilerVersion(const std::string &compiler) {
+        std::string versionCommand = compiler + " --version";
+        std::string output = executeCommand(versionCommand);
+        if (output.empty()) return "unknown";
+        std::istringstream iss(output);
+        std::string line;
+        std::getline(iss, line);
+        return line;
+    }
+
+    std::string getCompilerType(const std::string &compiler) {
+        if (compiler.find("g++") != std::string::npos || compiler.find("gcc") != std::string::npos) return "GCC";
+        if (compiler.find("clang") != std::string::npos) return "Clang";
+        return "unknown";
+    }
+
+    std::string detectBestCompiler() {
+        std::vector<std::string> candidates = {"g++", "clang++", "gcc", "clang"};
+        for (const auto &c : candidates) {
+            if (isCompilerAvailable(c)) return c;
+        }
+        return "g++";
     }
 
     // long getFileSize(const std::string &filename) {
@@ -161,7 +226,7 @@ namespace BenchmarkAnalyzer {
     //     return file.tellg();
     // }
 
-    std::int64_t /* force 64 bit, dont care about multi-architecture right now */
+    std::int64_t /* 64 bit int */
     getFileSize(const std::string &filenameToParse) {
         std::ifstream file(filenameToParse, std::ios::binary | std::ios::ate); // whats with the "|" between enumeration flag constants?
         // open the executable in binary mode
@@ -179,9 +244,14 @@ namespace BenchmarkAnalyzer {
         const std::string &sourceFile, const std::string &binaryOutput,
         const std::string &compilerFlags, double &compileTime,
         const std::string &compiler) -> bool {
+        if (!std::filesystem::exists(sourceFile)) {
+            std::cerr << colors::BRIGHT_RED << "Source file not found: " << sourceFile << colors::RESET << std::endl;
+            return false;
+        }
+
         auto timeSavePoint_START {std::chrono::high_resolution_clock::now()};
 
-        std::string compileCommand{compiler + " " + compilerFlags + " " + sourceFile + " -o " + binaryOutput + " 2>&1"};
+        std::string compileCommand{compiler + " " + compilerFlags + " " + sourceFile + " -o " + binaryOutput};
         std::string output {executeCommand(compileCommand)};
 
         auto timeSavePoint_END {std::chrono::high_resolution_clock::now()};
@@ -197,24 +267,17 @@ namespace BenchmarkAnalyzer {
 
     // std::string x {_SC_PRO}
 
-    bool generateAssembly(const std::string &sourceFile, const std::string &assemblyOutput, const std::string &compilerFlags) {
-        // g++ -0[x] -S sex.cpp -o sex 2>&1
-        std::string asmCommand = "g++ " + compilerFlags + " -S " + sourceFile + " -o " + assemblyOutput + " 2>&1";
-        // 2>&1 merges stderr into stdout so the function can capture compiler messages (errors)
+    bool generateAssembly(const std::string &sourceFile, const std::string &assemblyOutput, const std::string &compilerFlags, const std::string &compiler) {
+        std::string asmCommand = compiler + " " + compilerFlags + " -S " + sourceFile + " -o " + assemblyOutput;
+        std::string output = executeCommand(asmCommand);
 
-        // if (!theCommandExecutingCode.empty() && theCommandExecutingCode.find("error") != std::string::npos) {
-        //     std::cerr << "Assembly generation errors found:\n" << theCommandExecutingCode << std::endl;
-        //     return false;
-        // }
-
-        int exitCode {system(asmCommand.c_str())};
-        if (exitCode != 0) {
+        if (!output.empty() && output.find("error") != std::string::npos) {
             std::cerr << colors::BRIGHT_RED << "\n\nAssembly file generation failure\n\n" << colors::RESET;
             return false;
         }
 
-        std::cout << colors::BRIGHT_CYAN << "  Assembly run command: " << colors::RESET << assemblyOutput << std::endl;
-        /* long */ std::int64_t generatedAssemblyFileSize {getFileSize(assemblyOutput)};
+        std::cout << colors::BRIGHT_CYAN << "  Assembly output: " << colors::RESET << assemblyOutput << std::endl;
+        std::int64_t generatedAssemblyFileSize {getFileSize(assemblyOutput)};
 
         if (generatedAssemblyFileSize >= 0) {
             printMetric("Assembly File Size", formatBytes(generatedAssemblyFileSize));
@@ -250,6 +313,16 @@ namespace BenchmarkAnalyzer {
                 }
             }
 
+            struct rlimit cpuLimit;
+            cpuLimit.rlim_cur = 30;
+            cpuLimit.rlim_max = 60;
+            setrlimit(RLIMIT_CPU, &cpuLimit);
+
+            struct rlimit memLimit;
+            memLimit.rlim_cur = 1024ULL * 1024 * 1024;
+            memLimit.rlim_max = 2ULL * 1024 * 1024 * 1024;
+            setrlimit(RLIMIT_AS, &memLimit);
+
             execl(binaryPath.c_str(), binaryPath.c_str(), nullptr);
             _exit(1);
         } else if (pid > 0) {
@@ -279,13 +352,14 @@ namespace BenchmarkAnalyzer {
             // handled by the OS, NOT an error
 
             // long int / int
-            // i64_TESTED_LINUX_DT minorPageFaults;
-            // i64_TESTED_LINUX_DT majorPageFaults;
+            // std::int64_t minorPageFaults;
+            // std::int64_t majorPageFaults;
             statisticStruct.minorPageFaults               = usage.ru_minflt; // the page is already in RAM but is not mapped into the process's address space yet,
                                                                              // avoids disk I/O overhead
             statisticStruct.majorPageFaults               = usage.ru_majflt; // page is not in RAM and needs disk I/O overhead
         } else {
-            std::cerr << colors::BRIGHT_RED << "Fork failure due to unknown inference." << colors::RESET << std::endl;
+            std::cerr << colors::BRIGHT_RED << "Fork failure during benchmark execution." << colors::RESET << std::endl;
+            statisticStruct.programExitCode = -2;
         } return statisticStruct;
     }
 
@@ -312,7 +386,7 @@ namespace BenchmarkAnalyzer {
 
     // ---
 
-    auto formatBytes(i64_TESTED_LINUX_DT bytes) -> std::string {
+    auto formatBytes(std::int64_t bytes) -> std::string {
         // const char *units[] = {"B", "KB", "MB", "GB"};
         std::vector<std::string> units = {"B", "KB", "MB", "GB"};
         int unitIndex {0};
@@ -484,6 +558,7 @@ namespace BenchmarkAnalyzer {
         printHeader("Welcome 2 IteraXive");
 
         printMetric("Source File", benchMarkConfigStruct.sourceFile);
+        printMetric("Compiler", benchMarkConfigStruct.compiler);
         printMetric("Compiler Flags", benchMarkConfigStruct.compilerFlags);
         printMetric("Number of Runs", std::to_string(benchMarkConfigStruct.totalExecutionRuns));
         printMetric("Warmup Iterations", std::to_string(benchMarkConfigStruct.warmupIterations));
@@ -554,7 +629,7 @@ namespace BenchmarkAnalyzer {
         if (benchMarkConfigStruct.generateAssembly) {
             std::cout << '\n';
             printHeader("ASSEMBLY GENERATION");
-            if (!generateAssembly(benchMarkConfigStruct.sourceFile, benchMarkConfigStruct.assemblyOutputFile, benchMarkConfigStruct.compilerFlags)) {
+            if (!generateAssembly(benchMarkConfigStruct.sourceFile, benchMarkConfigStruct.assemblyOutputFile, benchMarkConfigStruct.compilerFlags, benchMarkConfigStruct.compiler)) {
                 std::cerr << colors::BRIGHT_RED << "Assembly generation failed - continuing without it." << colors::RESET << "\n";
             } else {
                 const long asmSize{getFileSize(benchMarkConfigStruct.assemblyOutputFile)};
@@ -696,7 +771,7 @@ namespace BenchmarkAnalyzer {
     }
 
     benchmarkConfig configureInteractiveBenchmark() {
-        std::string sourceFile, assemblyFile, compilerFlags;
+        std::string sourceFile, assemblyFile, compilerFlags, selectedCompiler;
         int totalReiterativeExecutionRuns, warmupIterations;
         char assemblyFileGenerationFlag;
 
@@ -706,11 +781,31 @@ namespace BenchmarkAnalyzer {
         std::cout << colors::BRIGHT_YELLOW << "  Source file path: " << colors::RESET;
         std::cin >> sourceFile;
 
-        std::cout << colors::BRIGHT_YELLOW << "  Compiler flags (default: -O2 -std=c++17): " << colors::RESET;
-        std::cin.ignore();
+        std::vector<std::string> availableCompilers;
+        std::vector<std::string> candidates = {"g++", "clang++", "gcc", "clang"};
+        for (const auto &c : candidates) {
+            if (isCompilerAvailable(c)) availableCompilers.push_back(c);
+        }
+
+        if (!availableCompilers.empty()) {
+            std::cout << colors::BRIGHT_CYAN << "  Available compilers:\n";
+            for (size_t i = 0; i < availableCompilers.size(); i++) {
+                std::cout << "    " << (i + 1) << ". " << availableCompilers[i] << "\n";
+            }
+            std::cout << colors::BRIGHT_YELLOW << "  Select compiler [1-" << availableCompilers.size() << "]: " << colors::RESET;
+            int compilerChoice = 1;
+            std::cin >> compilerChoice;
+            if (compilerChoice >= 1 && compilerChoice <= static_cast<int>(availableCompilers.size())) {
+                selectedCompiler = availableCompilers[compilerChoice - 1];
+                std::cout << colors::DIM << "  Using: " << selectedCompiler << colors::RESET << "\n";
+            }
+            std::cin.ignore();
+        }
+
+        std::cout << colors::BRIGHT_YELLOW << "  Compiler flags (default: -O2 -std=c++17 -static): " << colors::RESET;
         std::getline(std::cin, compilerFlags);
         if (compilerFlags.empty()) {
-            compilerFlags = "-O2 -std=c++17";
+            compilerFlags = "-O2 -std=c++17 -static";
         }
 
         std::cout << colors::BRIGHT_YELLOW << "  Number of runs (default: 5): " << colors::RESET;
@@ -739,7 +834,7 @@ namespace BenchmarkAnalyzer {
             std::cin >> assemblyFile;
         }
 
-        return benchmarkConfig(sourceFile, assemblyFile, compilerFlags, totalReiterativeExecutionRuns, warmupIterations);
+        return benchmarkConfig(sourceFile, assemblyFile, compilerFlags, totalReiterativeExecutionRuns, warmupIterations, selectedCompiler);
     }
 
     void runInteractiveCLI() {
