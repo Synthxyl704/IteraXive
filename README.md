@@ -2,7 +2,8 @@
 
 A C/C++ benchmarker for Linux. It compiles a source file and runs the resulting binary multiple times, collecting execution time, memory usage, page faults, context switches, and CPU utilization. Prints everything with ANSI color formatting and gives you percentile breakdowns and a stability score.
 
-AI tools were used during development. Every line was reviewed and (possibly) refactored before committing.
+<img width="1920" height="1080" alt="260531_15h24m47s_screenshot" src="https://github.com/user-attachments/assets/78c4240e-dd15-4fe9-a788-8d1da2a76b09" />
+<img width="997" height="1080" alt="260531_15h25m39s_screenshot" src="https://github.com/user-attachments/assets/e0dae845-e9bc-491b-bed7-18ae6c630409" />
 
 ## What it measures
 
