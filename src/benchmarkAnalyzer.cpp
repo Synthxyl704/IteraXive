@@ -2,6 +2,7 @@
 
 // i hate preprocessors
 
+#include <dlfcn.h>
 #include <array>
 #include <filesystem>
 #include <functional>
@@ -284,83 +285,51 @@ namespace BenchmarkAnalyzer {
         } return true;
     }
 
-    auto runSingularTimeSlice(const std::string &binaryPath, const benchmarkConfig &config) -> analyzerStatisticParameters {
-        // analyzerStatisticParameters statisticStruct = runSingularTimeSlice();
+    auto runSingularTimeSlice(BenchmarkFunc func, const benchmarkConfig &config) -> analyzerStatisticParameters {
         analyzerStatisticParameters statisticStruct = {};
 
-        // pid_t pid {_POSIX_SPAWN}; // fork();
-        pid_t pid {fork()};
+        if (config.enableCoreIsolation && config.targetCoreId >= 0) {
+            cpu_set_t totalProcessorSet;
+            CPU_ZERO(&totalProcessorSet);
+            CPU_SET(config.targetCoreId, &totalProcessorSet);
+            sched_setaffinity(0, sizeof(cpu_set_t), &totalProcessorSet);
+        }
 
-        if (pid == 0) {
-            // CHILD PROCESS - apply core isolation here so the benchmark runs on specified core
-            if (config.enableCoreIsolation && config.targetCoreId >= 0) {
-                cpu_set_t totalProcessorSet;
-                CPU_ZERO(&totalProcessorSet);
-                CPU_SET(config.targetCoreId, &totalProcessorSet);
-                if (sched_setaffinity(0, sizeof(cpu_set_t), &totalProcessorSet) != 0) {
-                    perror("sched_setaffinity");
-                    _exit(1);
-                }
-            }
+        if (config.enableThreadIsolation && config.targetCoreId >= 0) {
+            cpu_set_t totalProcessorSet;
+            CPU_ZERO(&totalProcessorSet);
+            CPU_SET(config.targetCoreId, &totalProcessorSet);
+            pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &totalProcessorSet);
+        }
 
-            // apply thread isolation (same as core for single-threaded child)
-            if (config.enableThreadIsolation && config.targetCoreId >= 0) {
-                cpu_set_t totalProcessorSet;
-                CPU_ZERO(&totalProcessorSet);
-                CPU_SET(config.targetCoreId, &totalProcessorSet);
-                if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &totalProcessorSet) != 0) {
-                    _exit(1);
-                }
-            }
+        struct timespec spin_ts;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &spin_ts);
+        uint64_t spin_target = spin_ts.tv_sec * 1000000000ULL + spin_ts.tv_nsec + 2000;
+        uint64_t spin_current;
+        do {
+            clock_gettime(CLOCK_MONOTONIC_RAW, &spin_ts);
+            spin_current = spin_ts.tv_sec * 1000000000ULL + spin_ts.tv_nsec;
+        } while (spin_current < spin_target);
 
-            struct rlimit cpuLimit;
-            cpuLimit.rlim_cur = 30;
-            cpuLimit.rlim_max = 60;
-            setrlimit(RLIMIT_CPU, &cpuLimit);
+        struct timespec ts_start, ts_end;
 
-            struct rlimit memLimit;
-            memLimit.rlim_cur = 1024ULL * 1024 * 1024;
-            memLimit.rlim_max = 2ULL * 1024 * 1024 * 1024;
-            setrlimit(RLIMIT_AS, &memLimit);
+        asm volatile("" ::: "memory");
+        clock_gettime(CLOCK_MONOTONIC_RAW, &ts_start);
+        asm volatile("" ::: "memory");
 
-            execl(binaryPath.c_str(), binaryPath.c_str(), nullptr);
-            _exit(1);
-        } else if (pid > 0) {
-            auto startProgramExecution {std::chrono::high_resolution_clock::now()};
+        char* bench_argv[] = { const_cast<char*>("iteraxive"), nullptr };
+        int exitCode = func(1, bench_argv);
 
-            int status; // POSIX wait status (SIGTERM, core dump, successful exit, etc) 
-                        // the core dump contains RAM memory, CPU state, stack & heap pointers, IP, TS, etx. 
-                        // i really do go on side quests learning this shit
+        asm volatile("" ::: "memory");
+        clock_gettime(CLOCK_MONOTONIC_RAW, &ts_end);
+        asm volatile("" ::: "memory");
 
-            struct rusage usage; // struct rusage is defined inside <sys/resource.h>
+        uint64_t start_ns = ts_start.tv_sec * 1000000000ULL + ts_start.tv_nsec;
+        uint64_t end_ns = ts_end.tv_sec * 1000000000ULL + ts_end.tv_nsec;
+        statisticStruct.executionTime = (double)(end_ns - start_ns) / 1e9;
+        statisticStruct.programExitCode = exitCode;
 
-            // pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
-            wait4(pid, &status, 0, &usage); // wait4 is a linux syscall which waits for c-process termination
-
-            auto endProgramExecution {std::chrono::high_resolution_clock::now()};
-
-            statisticStruct.executionTime                 = std::chrono::duration<double>(endProgramExecution - startProgramExecution).count();
-            statisticStruct.programExitCode               = (WIFEXITED(status)) ? WEXITSTATUS(status) : (-1);
-            statisticStruct.maximumMemoryUsageInKB        = usage.ru_maxrss;                    // maximum resident set size = max main memory usage in kilobytes (base 10?)
-            statisticStruct.userModeProcessorTime         = getTimeInSeconds(usage.ru_utime);   // user mode processor execution
-            statisticStruct.systemKernelModeProcessorTime = getTimeInSeconds(usage.ru_stime);   // kernel mode processor execution
-            statisticStruct.voluntaryContextSwitches      = usage.ru_nvcsw;                     // voluntary CTxS (conditionals, mutexes futexes whatever)
-            statisticStruct.involuntaryContextSwitches    = usage.ru_nivcsw;                    // involuntary CTxS (time slice expiration, hierarchy stuff etc)
-                                                                                                // WHO THE FUCK OFFICIALIZED THIS CONVENTION??
-            // a page fault happens when a process tries to access a virtual memory page
-            // that is not currently mapped in its page table
-            // handled by the OS, NOT an error
-
-            // long int / int
-            // std::int64_t minorPageFaults;
-            // std::int64_t majorPageFaults;
-            statisticStruct.minorPageFaults               = usage.ru_minflt; // the page is already in RAM but is not mapped into the process's address space yet,
-                                                                             // avoids disk I/O overhead
-            statisticStruct.majorPageFaults               = usage.ru_majflt; // page is not in RAM and needs disk I/O overhead
-        } else {
-            std::cerr << colors::BRIGHT_RED << "Fork failure during benchmark execution." << colors::RESET << std::endl;
-            statisticStruct.programExitCode = -2;
-        } return statisticStruct;
+        return statisticStruct;
     }
 
     // ---
@@ -554,6 +523,8 @@ namespace BenchmarkAnalyzer {
         std::cout << "\n";
     }
 
+    static int emptyBenchEntry(int, char**) { return 0; }
+
     void runBenchmark(const benchmarkConfig &benchMarkConfigStruct) {
         printHeader("Welcome 2 IteraXive");
 
@@ -596,7 +567,9 @@ namespace BenchmarkAnalyzer {
         const std::filesystem::path temporaryDirectory {std::filesystem::temp_directory_path()};
         // C:\Users\<user>\someDir1\hentai
         // /tmp
-        const std::string binaryName {"main_" + std::to_string(getpid()) + "_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())};
+        struct timespec name_ts;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &name_ts);
+        const std::string binaryName {"main_" + std::to_string(getpid()) + "_" + std::to_string(name_ts.tv_sec * 1000000000ULL + name_ts.tv_nsec) + ".so"};
 
         const std::filesystem::path binaryPath {(temporaryDirectory / binaryName)}; // concatenation conduction
 
@@ -639,11 +612,38 @@ namespace BenchmarkAnalyzer {
             }
         }
 
+        void* libHandle = dlopen(binaryPath.string().c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (!libHandle) {
+            std::cerr << colors::BRIGHT_RED << "dlopen failed: " << dlerror() << colors::RESET << "\n";
+            cleanup();
+            return;
+        }
+
+        BenchmarkFunc func = reinterpret_cast<BenchmarkFunc>(dlsym(libHandle, "main"));
+        if (!func) {
+            func = reinterpret_cast<BenchmarkFunc>(dlsym(libHandle, "_Z4mainiPPc"));
+        }
+        if (!func) {
+            func = reinterpret_cast<BenchmarkFunc>(dlsym(libHandle, "_Z4mainv"));
+        }
+        if (!func) {
+            std::cerr << colors::BRIGHT_RED << "dlsym: no main function found in compiled library." << colors::RESET << "\n";
+            dlclose(libHandle);
+            cleanup();
+            return;
+        }
+
+        double measurementOverhead = 0.0;
+        {
+            auto overheadStats = runSingularTimeSlice(BenchmarkAnalyzer::emptyBenchEntry, benchMarkConfigStruct);
+            measurementOverhead = overheadStats.executionTime;
+        }
+
         if (benchMarkConfigStruct.warmupIterations > 0) {
             std::cout << "\n";
             printHeader("WARMUP PHASE");
             for (int inx {0}; inx < benchMarkConfigStruct.warmupIterations; inx += 1) {
-                runSingularTimeSlice(binaryPath.string(), benchMarkConfigStruct);
+                runSingularTimeSlice(func, benchMarkConfigStruct);
                 std::cout << colors::BRIGHT_CYAN << "  Warmup iteration " << colors::RESET 
                           << colors::BRIGHT_WHITE << (inx + 1) 
                           << colors::DIM << '/' << benchMarkConfigStruct.warmupIterations << colors::RESET 
@@ -657,7 +657,10 @@ namespace BenchmarkAnalyzer {
         allStatistics.reserve(benchMarkConfigStruct.totalExecutionRuns);
 
         for (int inx {1}; inx <= benchMarkConfigStruct.totalExecutionRuns; inx += 1) {
-            auto stats {runSingularTimeSlice(binaryPath.string(), benchMarkConfigStruct)};
+            auto stats {runSingularTimeSlice(func, benchMarkConfigStruct)};
+
+            stats.executionTime -= measurementOverhead;
+            if (stats.executionTime < 0.0) stats.executionTime = 0.0;
 
             stats.compileTime = compileTime;
             stats.binarySize = binarySize;
@@ -672,6 +675,7 @@ namespace BenchmarkAnalyzer {
         std::cout << "\n";
         printHeader("DETAILED STATISTICS");
         printDetailedStatistics(allStatistics, benchMarkConfigStruct.totalExecutionRuns);
+        dlclose(libHandle);
         // cleanup
         cleanup();
     }
@@ -802,7 +806,7 @@ namespace BenchmarkAnalyzer {
             std::cin.ignore();
         }
 
-        std::cout << colors::BRIGHT_YELLOW << "  Compiler flags (default: -O2 -std=c++17 -static): " << colors::RESET;
+        std::cout << colors::BRIGHT_YELLOW << "  Compiler flags (default: -O2 -std=c++17 -shared -fPIC): " << colors::RESET;
         std::getline(std::cin, compilerFlags);
         if (compilerFlags.empty()) {
             compilerFlags = "-O2 -std=c++17 -static";
