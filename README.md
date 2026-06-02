@@ -1,11 +1,11 @@
-# IteraXive
+<img width="894" height="934" alt="image" src="https://github.com/user-attachments/assets/41fc0db2-56d4-4ce5-af5c-e76225f68c21" /># IteraXive
 
 A C/C++ benchmarker for Linux. It compiles a source file and runs the resulting binary multiple times, collecting execution time, memory usage, page faults, context switches, and CPU utilization. Prints everything with ANSI color formatting and gives you percentile breakdowns and a stability score.
 
 <img width="1920" height="1080" alt="260531_15h24m47s_screenshot" src="https://github.com/user-attachments/assets/78c4240e-dd15-4fe9-a788-8d1da2a76b09" />
-[OLD `RUSAGE` METRICS INCLUDED]
+[old `rusage` metrics included]
 <img width="997" height="1080" alt="260531_15h25m39s_screenshot" src="https://github.com/user-attachments/assets/e0dae845-e9bc-491b-bed7-18ae6c630409" />
-[NEW MINIMAL]
+<br>[new]
 <img width="894" height="934" alt="image" src="https://github.com/user-attachments/assets/eac9b4e8-9a15-4b03-9a84-654ef558f3a1" />
 
 ## What it measures
@@ -15,12 +15,14 @@ After each benchmark run, you get:
 - Compilation time and binary size
 - Execution time -- average, median, min, max, standard deviation
 - Percentile stability -- P25, P75, P95, P99, coefficient of variation
+- Program exit code
+
+Old `rusage` and `fork + exec` had given the following metrics but at an overhead cost (not included now):   
 - Memory usage -- average, min, max across runs
 - Page faults -- minor and major, total and per-run averages
 - CPU time -- user-mode and kernel-mode for the last run
 - CPU utilization percentage
 - Context switches -- voluntary and involuntary
-- Program exit code
 
 The stability assessment ranks results as EX+ (excellent, CoV under 5%), AA (good, under 10%), B (moderate, under 20%), or D (trash, over 20%).
 
