@@ -13,7 +13,7 @@ add_executable(iteraxive
 )
 
 target_include_directories(iteraxive PRIVATE src)
-target_link_libraries(iteraxive PRIVATE Threads::Threads)
+target_link_libraries(iteraxive PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 
 option(ITERAXIVE_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 if(ITERAXIVE_ENABLE_ASAN)

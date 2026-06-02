@@ -56,7 +56,9 @@ def build_direct():
         os.path.join(SRC_DIR, "benchmarkAnalyzer.cpp"),
     ]
     output = os.path.join(PROJECT_ROOT, "iteraxive")
-    cmd = [compiler, "-std=c++17", "-O2"] + sources + ["-o", output, "-lpthread"]
+    cmd = (
+        [compiler, "-std=c++17", "-O2"] + sources + ["-o", output, "-lpthread", "-ldl"]
+    )
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print("Build failed:", result.stderr, file=sys.stderr)

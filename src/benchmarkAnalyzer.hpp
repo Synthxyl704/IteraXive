@@ -20,6 +20,7 @@
 #include <sched.h>
 #include <pthread.h>
 #include <cstdint>
+#include <time.h>
 
 
 
@@ -55,8 +56,8 @@ namespace BenchmarkAnalyzer {
 
     // struct ComplexityAnalysis {
     //     std::string upperBound;        // O(?) - asymptotic upper bound
-    //     std::string lowerBound;        // Î©(?) - asymptotic lower bound
-    //     std::string tightBound;        // Î˜(?) - asymptotic tight bound
+    //     std::string lowerBound;        // L(?) - asymptotic lower bound
+    //     std::string tightBound;        // X(?) - asymptotic tight bound
 
     //     // never knew the theory i learnt in college would help LOL
     //     // not that it matters anyway because i wouldve researched the signs anyway 
@@ -72,6 +73,8 @@ namespace BenchmarkAnalyzer {
     //     double &compileTime,
     //     const std::string &compiler = "g++"
     // ) -> bool;
+
+    using BenchmarkFunc = int(*)(int, char**);
 
     struct benchmarkConfig {
         bool generateAssembly;
@@ -92,7 +95,7 @@ namespace BenchmarkAnalyzer {
 
         benchmarkConfig(const std::string &src,
                         const std::string &asmOut = "",
-                        const std::string &flags = "-O2 -std=c++17 -static",
+                        const std::string &flags = "-O2 -std=c++17 -shared -fPIC",
                         int runs = 5,
                         int warmup = 2,
                         const std::string &comp = "")
@@ -135,7 +138,7 @@ namespace BenchmarkAnalyzer {
         const std::string &compiler = "g++"
     );
 
-    analyzerStatisticParameters runSingularTimeSlice(const std::string &binaryPath, const benchmarkConfig &config);
+    analyzerStatisticParameters runSingularTimeSlice(BenchmarkFunc func, const benchmarkConfig &config);
 
     template<typename StatsContainer> // why do i have to do this 2 times
 

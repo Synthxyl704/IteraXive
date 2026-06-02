@@ -29,7 +29,7 @@ build_iteraxive() {
         cmake -S "$PROJECT_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release &>/dev/null
         cmake --build "$BUILD_DIR" --parallel 2>/dev/null
     else
-        g++ -std=c++17 -O2 src/main.cpp src/benchmarkAnalyzer.cpp -o "$ITERAXIVE" -lpthread
+        g++ -std=c++17 -O2 src/main.cpp src/benchmarkAnalyzer.cpp -o "$ITERAXIVE" -lpthread -ldl
     fi
 
     if [ ! -x "$ITERAXIVE" ]; then
