@@ -372,6 +372,15 @@ namespace BenchmarkAnalyzer {
         return (outputStringStream.str());
     }
 
+    static auto scaleTime(double seconds) {
+        struct { double value; const char* unit; } result;
+        if (seconds >= 1.0)        { result.value = seconds;           result.unit = "s";  }
+        else if (seconds >= 0.001) { result.value = seconds * 1000;    result.unit = "ms"; }
+        else if (seconds >= 0.000001) { result.value = seconds * 1000000; result.unit = "us"; }
+        else                       { result.value = seconds * 1000000000; result.unit = "ns"; }
+        return result;
+    }
+
     template <typename StatsContainer> // whatever happened to <typename T> fuck whoever writes typename T
     void printDetailedStatistics(const StatsContainer &allStatisticStructVector, int numberOfExecRuns) {
         std::vector<double> numOfExecutionTimes;
@@ -435,17 +444,17 @@ namespace BenchmarkAnalyzer {
         double coefficientOfVariation {((standardDeviation / averageExecutionTime) * 100)}; // im the bracket god
         
         printHeader("TIMING METRICS");
-        printMetric("Average execution time", std::to_string(averageExecutionTime * 1000), "ms");
-        printMetric("Median execution time", std::to_string(medianTime * 1000), "ms");
-        printMetric("Minimum execution time", std::to_string(minimumExecutionTime * 1000), "ms");
-        printMetric("Maximum execution time", std::to_string(maximumExecutionTime * 1000), "ms");
-        printMetric("Standard deviation", std::to_string(standardDeviation * 1000), "ms");
+        do { auto s = scaleTime(averageExecutionTime); printMetric("Average execution time", std::to_string(s.value), s.unit); } while(false);
+        do { auto s = scaleTime(medianTime);           printMetric("Median execution time", std::to_string(s.value), s.unit); } while(false);
+        do { auto s = scaleTime(minimumExecutionTime); printMetric("Minimum execution time", std::to_string(s.value), s.unit); } while(false);
+        do { auto s = scaleTime(maximumExecutionTime); printMetric("Maximum execution time", std::to_string(s.value), s.unit); } while(false);
+        do { auto s = scaleTime(standardDeviation);    printMetric("Standard deviation", std::to_string(s.value), s.unit); } while(false);
 
         printHeader("PERCENTILE STABILITY");
-        printMetric("25th percentile [%25]", std::to_string(p25Time * 1000), "ms");
-        printMetric("75th percentile [%75]", std::to_string(p75Time * 1000), "ms");
-        printMetric("95th percentile [%95]", std::to_string(p95Time * 1000), "ms");
-        printMetric("99th percentile [%99]", std::to_string(p99Time * 1000), "ms");
+        do { auto s = scaleTime(p25Time); printMetric("25th percentile [%25]", std::to_string(s.value), s.unit); } while(false);
+        do { auto s = scaleTime(p75Time); printMetric("75th percentile [%75]", std::to_string(s.value), s.unit); } while(false);
+        do { auto s = scaleTime(p95Time); printMetric("95th percentile [%95]", std::to_string(s.value), s.unit); } while(false);
+        do { auto s = scaleTime(p99Time); printMetric("99th percentile [%99]", std::to_string(s.value), s.unit); } while(false);
         printMetric("Coeff. of variation (CoV)", std::to_string(coefficientOfVariation), "%");
 
         std::string stabilityAssessment;
@@ -466,50 +475,52 @@ namespace BenchmarkAnalyzer {
 
         printMetric("Stability assessment rank", stabilityAssessment);
 
-        printHeader("MEMORY METRICS");
-        printMetric("Average Memory Usage", formatBytes(static_cast<long>(averageMemoryUsage * 1024)));
-        printMetric("Minimum Memory Usage", formatBytes(minimumMemory * 1024));
-        printMetric("Maximum Memory Usage", formatBytes(maximumMemory * 1024));
+        // printHeader("MEMORY METRICS");
+        // printMetric("Average Memory Usage", formatBytes(static_cast<long>(averageMemoryUsage * 1024)));
+        // printMetric("Minimum Memory Usage", formatBytes(minimumMemory * 1024));
+        // printMetric("Maximum Memory Usage", formatBytes(maximumMemory * 1024));
         // // printMetric("Minor Page Faults", )
         // const auto &lastExecRun {allStatisticStructVector.back()};
         // printMetric("Minor Page Faults", std::to_string(lastExecRun.minorPageFaults));
         // printMetric("Major Page Faults", std::to_string(lastExecRun.majorPageFaults));
 
-        long totalMinorFaults = 0;
-        long totalMajorFaults = 0;
+        // long totalMinorFaults = 0;
+        // long totalMajorFaults = 0;
 
-        for (const auto &statisticStruct : allStatisticStructVector) {
-            totalMinorFaults += statisticStruct.minorPageFaults;
-            totalMajorFaults += statisticStruct.majorPageFaults;
-        }
+        // for (const auto &statisticStruct : allStatisticStructVector) {
+        //     totalMinorFaults += statisticStruct.minorPageFaults;
+        //     totalMajorFaults += statisticStruct.majorPageFaults;
+        // }
 
-        double avgMinorFaults {static_cast<double>(totalMinorFaults) / numberOfExecRuns};
-        double avgMajorFaults {static_cast<double>(totalMajorFaults) / numberOfExecRuns};
+        // double avgMinorFaults {static_cast<double>(totalMinorFaults) / numberOfExecRuns};
+        // double avgMajorFaults {static_cast<double>(totalMajorFaults) / numberOfExecRuns};
         
-        printHeader("PAGE FAULT METRICS");
-        printMetric("Total Minor Page Faults", std::to_string(totalMinorFaults));
-        printMetric("Total Major Page Faults", std::to_string(totalMajorFaults));
-        printMetric("Avg Minor Page Faults", std::to_string(avgMinorFaults));
-        printMetric("Avg Major Page Faults", std::to_string(avgMajorFaults));
+        // printHeader("PAGE FAULT METRICS");
+        // printMetric("Total Minor Page Faults", std::to_string(totalMinorFaults));
+        // printMetric("Total Major Page Faults", std::to_string(totalMajorFaults));
+        // printMetric("Avg Minor Page Faults", std::to_string(avgMinorFaults));
+        // printMetric("Avg Major Page Faults", std::to_string(avgMajorFaults));
 
 
-        printHeader("PROCESSOR METRICS (latest run)");
+        // printHeader("PROCESSOR METRICS (latest run)");
+        // const auto &lastRun{allStatisticStructVector.back()};
+        // printMetric("User CPU Time (user-mode)", std::to_string(lastRun.userModeProcessorTime * 1000), "ms");
+        // printMetric("System CPU Time (kernel-mode)", std::to_string(lastRun.systemKernelModeProcessorTime * 1000), "ms");
+
+        // double totalActualProcessorTime = (lastRun.userModeProcessorTime + lastRun.systemKernelModeProcessorTime) * 1000; // convert to ms
+        // double processorUtilization = (totalActualProcessorTime / (lastRun.executionTime * 1000)) * 100;
+
+        // // double processorUtilization {
+        // //     ((lastRun.systemKernelModeProcessorTime + lastRun.systemKernelModeProcessorTime) / (lastRun.executionTime * 1000)) * 100
+        // // };
+
+        // printMetric("CPU Utilization", std::to_string(processorUtilization), "%");
+
+        // printHeader("CONTEXT SWITCHES (Last Run)");
+        // printMetric("Voluntary CTxS", std::to_string(lastRun.voluntaryContextSwitches));
+        // printMetric("Involuntary CTxS", std::to_string(lastRun.involuntaryContextSwitches));
+
         const auto &lastRun{allStatisticStructVector.back()};
-        printMetric("User CPU Time (user-mode)", std::to_string(lastRun.userModeProcessorTime * 1000), "ms");
-        printMetric("System CPU Time (kernel-mode)", std::to_string(lastRun.systemKernelModeProcessorTime * 1000), "ms");
-
-        double totalActualProcessorTime = (lastRun.userModeProcessorTime + lastRun.systemKernelModeProcessorTime) * 1000; // convert to ms
-        double processorUtilization = (totalActualProcessorTime / (lastRun.executionTime * 1000)) * 100;
-
-        // double processorUtilization {
-        //     ((lastRun.systemKernelModeProcessorTime + lastRun.systemKernelModeProcessorTime) / (lastRun.executionTime * 1000)) * 100
-        // };
-
-        printMetric("CPU Utilization", std::to_string(processorUtilization), "%");
-
-        printHeader("CONTEXT SWITCHES (Last Run)");
-        printMetric("Voluntary CTxS", std::to_string(lastRun.voluntaryContextSwitches));
-        printMetric("Involuntary CTxS", std::to_string(lastRun.involuntaryContextSwitches));
 
         printHeader("PROGRAM EXIT STATUS");
         if (lastRun.programExitCode == 0) {
@@ -809,7 +820,7 @@ namespace BenchmarkAnalyzer {
         std::cout << colors::BRIGHT_YELLOW << "  Compiler flags (default: -O2 -std=c++17 -shared -fPIC): " << colors::RESET;
         std::getline(std::cin, compilerFlags);
         if (compilerFlags.empty()) {
-            compilerFlags = "-O2 -std=c++17 -static";
+            compilerFlags = "-O2 -std=c++17 -shared -fPIC";
         }
 
         std::cout << colors::BRIGHT_YELLOW << "  Number of runs (default: 5): " << colors::RESET;
